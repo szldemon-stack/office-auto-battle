@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#090909"><title>办公室自动战斗</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#090909;color:#eee;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;touch-action:none}#game{width:100%;height:100%;display:flex;align-items:center;justify-content:center}canvas{display:block;max-width:100%;max-height:100%;object-fit:contain}
+</style>
+</head>
+<body><div id="game"></div>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
+<script>
+(() => {
+const W=390,H=844;
+class Battle extends Phaser.Scene{
+ constructor(){super('battle');this.wave=1;this.phase='prep';this.units=[];this.enemies=[];this.projectiles=[];this.gold=0;this.dragUnit=null;this.lastSpawn=0;this.kills=0}
+ create(){
+  this.cameras.main.setBackgroundColor('#090909');
+  this.add.rectangle(W/2,H/2,W,H,0x090909);
+  const grid=this.add.graphics();grid.lineStyle(1,0x202020,.65);
+  for(let x=15;x<W;x+=30)grid.lineBetween(x,90,x,H-92);
+  for(let y=100;y<H-90;y+=30)grid.lineBetween(0,y,W,y);
+  this.add.rectangle(W/2,82,W,1,0x292929);
+  this.add.text(20,38,'OFFICE / AUTO BATTLE',{fontSize:'10px',color:'#777',letterSpacing:2});
+  this.waveText=this.add.text(W-20,35,'01',{fontSize:'22px',color:'#eee',fontStyle:'bold'}).setOrigin(1,0);
+  this.phaseText=this.add.text(20,105,'拖动单位调整站位',{fontSize:'12px',color:'#888'});
+  this.add.rectangle(W/2,H-70,W,1,0x292929);
+  this.hint=this.add.text(W/2,H-46,'准备阶段 · 拖动三名队员布阵',{fontSize:'11px',color:'#777'}).setOrigin(.5);
+  this.startBtn=this.add.rectangle(W/2,H-115,210,48,0xe8e8e8).setInteractive({useHandCursor:true});
+  this.startLabel=this.add.text(W/2,H-115,'开始战斗',{fontSize:'15px',color:'#111',fontStyle:'bold'}).setOrigin(.5);
+  this.startBtn.on('pointerdown',()=>{if(this.phase==='prep')this.startBattle()});
+  this.createUnit('张飞','tank',95,560,true);
+  this.createUnit('关羽','fighter',195,610,true);
+  this.createUnit('弓箭手','ranger',295,550,true);
+  this.input.on('pointermove',p=>{if(this.dragUnit&&this.phase==='prep'){this.dragUnit.container.x=Phaser.Math.Clamp(p.x,34,W-34);this.dragUnit.container.y=Phaser.Math.Clamp(p.y,380,H-170)}});
+  this.input.on('pointerup',()=>{if(this.dragUnit){this.dragUnit=null}});
+  this.overlay=this.add.container(0,0).setDepth(100).setVisible(false);
+ }
+ createUnit(name,type,x,y,ally){
+  const c=this.add.container(x,y);const g=this.add.graphics();
+  const fill=ally?0xbdbdbd:0x555555,edge=ally?0xf0f0f0:0x888888;
+  g.fillStyle(fill,1);g.fillCircle(0,0,type==='tank'?18:15);g.lineStyle(2,edge,1);g.strokeCircle(0,0,type==='tank'?18:15);
+  g.fillStyle(0x171717,1);g.fillCircle(-4,-4,4);g.fillCircle(5,-4,4);
+  if(type==='tank'){g.lineStyle(4,0xeeeeee,1);g.lineBetween(-15,-19,15,-19);g.lineBetween(-12,-23,12,-23)}
+  if(type==='fighter'){g.lineStyle(3,0xeeeeee,1);g.lineBetween(8,-10,24,-25)}
+  if(type==='ranger'){g.lineStyle(2,0xeeeeee,1);g.strokeCircle(20,0,11);g.lineBetween(20,-11,20,11)}
+  c.add(g);
+  const label=this.add.text(0,27,name,{fontSize:'11px',color:ally?'#ddd':'#aaa',fontStyle:'bold'}).setOrigin(.5);c.add(label);
+  const u={name,type,ally,container:c,hp:type==='tank'?170:type==='fighter'?125:85,max:type==='tank'?170:type==='fighter'?125:85,range:type==='ranger'?180:42,damage:type==='tank'?17:type==='fighter'?25:16,rate:type==='ranger'?850:1050,last:0,dead:false};
+  if(ally){c.setSize(52,60);c.setInteractive(new Phaser.Geom.Rectangle(-26,-25,52,60),Phaser.Geom.Rectangle.Contains);c.on('pointerdown',()=>{if(this.phase==='prep')this.dragUnit=u})}
+  else {u.container.setDepth(5)}
+  (ally?this.units:this.enemies).push(u);return u;
+ }
+ startBattle(){
+  this.phase='fight';this.phaseText.setText('自动战斗中');this.hint.setText('交给队员自动完成战斗');this.startBtn.setVisible(false);this.startLabel.setVisible(false);
+  const count=4+this.wave*2;
+  for(let i=0;i<count;i++){const x=50+(i%4)*92,y=170+Math.floor(i/4)*78;this.time.delayedCall(i*420,()=>{if(this.phase==='fight')this.createUnit('敌兵','enemy',x,y,false)})}
+ }
+ nearest(u){
+  const pool=u.ally?this.enemies:this.units;let best=null,dist=1e9;
+  for(const t of pool){if(t.dead)continue;const d=Phaser.Math.Distance.Between(u.container.x,u.container.y,t.container.x,t.container.y);if(d<dist){dist=d;best=t}}
+  return {target:best,dist};
+ }
+ update(time){
+  if(this.phase!=='fight')return;
+  for(const u of [...this.units,...this.enemies]){
+   if(u.dead)continue;const {target,dist}=this.nearest(u);if(!target)continue;
+   if(dist>u.range){const a=Math.atan2(target.container.y-u.container.y,target.container.x-u.container.x);const speed=u.ally?(u.type==='tank'?34:43):29;u.container.x+=Math.cos(a)*speed/60;u.container.y+=Math.sin(a)*speed/60}
+   else if(time-u.last>u.rate){u.last=time;this.hit(u,target)}
+  }
+  if(this.enemies.every(e=>e.dead)){this.phase='reward';this.showReward(true)}
+  if(this.units.every(u=>u.dead)){this.phase='reward';this.showReward(false)}
+ }
+ hit(a,b){
+  b.hp-=a.damage;const col=a.ally?0xe8e8e8:0x888888;
+  const p=this.add.circle(a.container.x,a.container.y,3,col,1).setDepth(20);
+  this.tweens.add({targets:p,x:b.container.x,y:b.container.y,duration:130,onComplete:()=>p.destroy()});
+  this.tweens.add({targets:b.container,scaleX:1.18,scaleY:.86,duration:70,yoyo:true});
+  if(b.hp<=0&&!b.dead){b.dead=true;b.container.setAlpha(.25);this.tweens.add({targets:b.container,alpha:0,y:b.container.y+18,duration:300,onComplete:()=>b.container.destroy()});if(b.ally)this.kills++}
+ }
+ showReward(win){
+  this.overlay.removeAll(true);this.overlay.setVisible(true);
+  const shade=this.add.rectangle(W/2,H/2,W,H,0x000000,.82);
+  const title=this.add.text(W/2,250,win?'战斗胜利':'队伍覆灭',{fontSize:'26px',color:'#f2f2f2',fontStyle:'bold'}).setOrigin(.5);
+  const sub=this.add.text(W/2,292,win?'选择一项整备，然后继续推进':'本轮结束，重新整备再来',{fontSize:'12px',color:'#999'}).setOrigin(.5);
+  this.overlay.add([shade,title,sub]);
+  const choices=win?[['招募弓箭手','增加远程火力'],['强化全队','全员攻击提升'],['恢复队伍','全员恢复状态']]:[['重新开始','重置本轮阵容']];
+  choices.forEach((v,i)=>{const y=370+i*86;const r=this.add.rectangle(W/2,y,300,66,0x181818).setStrokeStyle(1,0x555555).setInteractive();const t=this.add.text(W/2,y-8,v[0],{fontSize:'15px',color:'#eee',fontStyle:'bold'}).setOrigin(.5);const d=this.add.text(W/2,y+15,v[1],{fontSize:'10px',color:'#888'}).setOrigin(.5);this.overlay.add([r,t,d]);r.on('pointerdown',()=>{if(!win){this.scene.restart();return}this.applyReward(i)})});
+  if(win){const next=this.add.text(W/2,690,'跳过整备，继续下一关',{fontSize:'12px',color:'#888'}).setOrigin(.5).setInteractive();this.overlay.add(next);next.on('pointerdown',()=>this.nextWave())}
+ }
+ applyReward(i){
+  if(i===0)this.createUnit('弓箭手','ranger',195,600,true);
+  if(i===1)this.units.forEach(u=>u.damage+=5);
+  if(i===2)this.units.forEach(u=>{u.hp=u.max});
+  this.nextWave();
+ }
+ nextWave(){this.overlay.setVisible(false);this.wave++;this.waveText.setText(String(this.wave).padStart(2,'0'));this.units=this.units.filter(u=>!u.dead);this.units.forEach(u=>{u.hp=u.max;u.container.setAlpha(1);u.container.setScale(1);u.container.x=90+this.units.indexOf(u)*100;u.container.y=570});this.enemies=[];this.phase='prep';this.phaseText.setText('拖动单位调整站位');this.hint.setText('准备阶段 · 拖动队员布阵');this.startBtn.setVisible(true);this.startLabel.setVisible(true)}
+}
+new Phaser.Game({type:Phaser.AUTO,parent:'game',width:W,height:H,backgroundColor:'#090909',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},physics:{default:'arcade',arcade:{debug:false}},scene:[Battle]});
+})();
+</script></body></html>
