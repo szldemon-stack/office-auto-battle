@@ -1,101 +1,25 @@
 <!doctype html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#090909"><title>办公室自动战斗</title>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#090909"><title>卡牌交锋</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#090909;color:#eee;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;touch-action:none}#game{width:100%;height:100%;display:flex;align-items:center;justify-content:center}canvas{display:block;max-width:100%;max-height:100%;object-fit:contain}
-</style>
-</head>
-<body><div id="game"></div>
-<script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#080808;color:#eee;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;touch-action:none}#app{height:100dvh;max-width:560px;margin:auto;display:flex;flex-direction:column;padding:env(safe-area-inset-top) 12px env(safe-area-inset-bottom);gap:9px}.top{height:35px;display:flex;align-items:center;justify-content:space-between;color:#777;font-size:10px;letter-spacing:2px;flex:none}.top strong{font-size:15px;color:#ddd;letter-spacing:0}.arena{position:relative;flex:1;min-height:300px;border:1px solid #292929;border-radius:3px;overflow:hidden;background:radial-gradient(ellipse at 50% 48%,#191919 0,#0b0b0b 70%)}.arena:before{content:"";position:absolute;inset:0;background-image:linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px);background-size:32px 32px;pointer-events:none}.lane{position:absolute;left:5%;right:5%;top:50%;height:1px;background:#333}.side-label{position:absolute;left:12px;color:#666;font-size:9px;letter-spacing:2px}.side-label.enemy{top:12px}.side-label.ally{bottom:12px}.card{position:absolute;width:86px;height:116px;border:1px solid #777;background:linear-gradient(145deg,#292929,#111);border-radius:5px;box-shadow:0 8px 18px #000b;display:flex;flex-direction:column;padding:7px;user-select:none;touch-action:none;transition:border-color .15s}.card.enemy{border-color:#555;background:linear-gradient(145deg,#1c1c1c,#090909)}.card .cost{font-size:9px;color:#999;display:flex;justify-content:space-between}.card .art{flex:1;display:grid;place-items:center;font-size:34px;color:#aaa;filter:grayscale(1)}.card .name{font-size:11px;font-weight:700;border-top:1px solid #555;padding-top:5px;white-space:nowrap}.card .stats{font-size:9px;color:#aaa;display:flex;justify-content:space-between;margin-top:4px}.hp{height:2px;background:#333;margin-top:5px}.hp i{display:block;height:100%;background:#bbb}.card.selected{border-color:#eee;box-shadow:0 0 0 1px #eee,0 10px 22px #000}.card.dead{opacity:0;transform:scale(.7);transition:.3s}.log{height:176px;flex:none;border:1px solid #292929;background:#0d0d0d;display:flex;flex-direction:column;min-height:130px}.loghead{height:29px;flex:none;border-bottom:1px solid #292929;padding:0 10px;display:flex;align-items:center;justify-content:space-between;font-size:9px;letter-spacing:1.5px;color:#777}.live{color:#aaa}.messages{overflow:auto;flex:1;padding:7px 10px;display:flex;flex-direction:column;gap:6px;scrollbar-width:none}.msg{font-size:11px;line-height:1.4;color:#888;display:flex;gap:8px}.msg b{font-weight:500;color:#c9c9c9}.msg.important{color:#ddd}.msg .time{color:#555;font-variant-numeric:tabular-nums}.bottom{height:45px;flex:none;display:flex;align-items:center;justify-content:space-between;color:#777;font-size:10px}.btn{border:1px solid #aaa;color:#eee;background:#eee;color:#111;padding:11px 24px;font-weight:700;font-size:12px;border-radius:2px}.btn:disabled{opacity:.3}.overlay{position:absolute;inset:0;background:#050505eF;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:24px}.overlay.show{display:flex}.overlay h2{font-size:22px;margin:0}.reward{width:100%;max-width:270px;border:1px solid #555;background:#171717;color:#eee;padding:15px;text-align:left}.reward small{display:block;color:#888;margin-top:6px}
+</style></head><body><div id="app">
+<header class="top"><span>FIELD NOTES / CARD CLASH</span><strong id="round">01</strong></header>
+<main class="arena" id="arena"><div class="side-label enemy">OPPONENT</div><div class="lane"></div><div class="side-label ally">YOUR DECK</div><section class="overlay" id="overlay"></section></main>
+<section class="log"><div class="loghead"><span>LIVE COMBAT FEED</span><span class="live" id="live">● STANDBY</span></div><div class="messages" id="messages"></div></section>
+<footer class="bottom"><span id="hint">拖动卡牌调整初始位置</span><button class="btn" id="action">开始交锋</button></footer>
+</div>
 <script>
-(() => {
-const W=390,H=844;
-class Battle extends Phaser.Scene{
- constructor(){super('battle');this.wave=1;this.phase='prep';this.units=[];this.enemies=[];this.projectiles=[];this.gold=0;this.dragUnit=null;this.lastSpawn=0;this.kills=0}
- create(){
-  this.cameras.main.setBackgroundColor('#090909');
-  this.add.rectangle(W/2,H/2,W,H,0x090909);
-  const grid=this.add.graphics();grid.lineStyle(1,0x202020,.65);
-  for(let x=15;x<W;x+=30)grid.lineBetween(x,90,x,H-92);
-  for(let y=100;y<H-90;y+=30)grid.lineBetween(0,y,W,y);
-  this.add.rectangle(W/2,82,W,1,0x292929);
-  this.add.text(20,38,'OFFICE / AUTO BATTLE',{fontSize:'10px',color:'#777',letterSpacing:2});
-  this.waveText=this.add.text(W-20,35,'01',{fontSize:'22px',color:'#eee',fontStyle:'bold'}).setOrigin(1,0);
-  this.phaseText=this.add.text(20,105,'拖动单位调整站位',{fontSize:'12px',color:'#888'});
-  this.add.rectangle(W/2,H-70,W,1,0x292929);
-  this.hint=this.add.text(W/2,H-46,'准备阶段 · 拖动三名队员布阵',{fontSize:'11px',color:'#777'}).setOrigin(.5);
-  this.startBtn=this.add.rectangle(W/2,H-115,210,48,0xe8e8e8).setInteractive({useHandCursor:true});
-  this.startLabel=this.add.text(W/2,H-115,'开始战斗',{fontSize:'15px',color:'#111',fontStyle:'bold'}).setOrigin(.5);
-  this.startBtn.on('pointerdown',()=>{if(this.phase==='prep')this.startBattle()});
-  this.createUnit('张飞','tank',95,560,true);
-  this.createUnit('关羽','fighter',195,610,true);
-  this.createUnit('弓箭手','ranger',295,550,true);
-  this.input.on('pointermove',p=>{if(this.dragUnit&&this.phase==='prep'){this.dragUnit.container.x=Phaser.Math.Clamp(p.x,34,W-34);this.dragUnit.container.y=Phaser.Math.Clamp(p.y,380,H-170)}});
-  this.input.on('pointerup',()=>{if(this.dragUnit){this.dragUnit=null}});
-  this.overlay=this.add.container(0,0).setDepth(100).setVisible(false);
- }
- createUnit(name,type,x,y,ally){
-  const c=this.add.container(x,y);const g=this.add.graphics();
-  const fill=ally?0xbdbdbd:0x555555,edge=ally?0xf0f0f0:0x888888;
-  g.fillStyle(fill,1);g.fillCircle(0,0,type==='tank'?18:15);g.lineStyle(2,edge,1);g.strokeCircle(0,0,type==='tank'?18:15);
-  g.fillStyle(0x171717,1);g.fillCircle(-4,-4,4);g.fillCircle(5,-4,4);
-  if(type==='tank'){g.lineStyle(4,0xeeeeee,1);g.lineBetween(-15,-19,15,-19);g.lineBetween(-12,-23,12,-23)}
-  if(type==='fighter'){g.lineStyle(3,0xeeeeee,1);g.lineBetween(8,-10,24,-25)}
-  if(type==='ranger'){g.lineStyle(2,0xeeeeee,1);g.strokeCircle(20,0,11);g.lineBetween(20,-11,20,11)}
-  c.add(g);
-  const label=this.add.text(0,27,name,{fontSize:'11px',color:ally?'#ddd':'#aaa',fontStyle:'bold'}).setOrigin(.5);c.add(label);
-  const u={name,type,ally,container:c,hp:type==='tank'?170:type==='fighter'?125:85,max:type==='tank'?170:type==='fighter'?125:85,range:type==='ranger'?180:42,damage:type==='tank'?17:type==='fighter'?25:16,rate:type==='ranger'?850:1050,last:0,dead:false};
-  if(ally){c.setSize(52,60);c.setInteractive(new Phaser.Geom.Rectangle(-26,-25,52,60),Phaser.Geom.Rectangle.Contains);c.on('pointerdown',()=>{if(this.phase==='prep')this.dragUnit=u})}
-  else {u.container.setDepth(5)}
-  (ally?this.units:this.enemies).push(u);return u;
- }
- startBattle(){
-  this.phase='fight';this.phaseText.setText('自动战斗中');this.hint.setText('交给队员自动完成战斗');this.startBtn.setVisible(false);this.startLabel.setVisible(false);
-  const count=4+this.wave*2;
-  for(let i=0;i<count;i++){const x=50+(i%4)*92,y=170+Math.floor(i/4)*78;this.time.delayedCall(i*420,()=>{if(this.phase==='fight')this.createUnit('敌兵','enemy',x,y,false)})}
- }
- nearest(u){
-  const pool=u.ally?this.enemies:this.units;let best=null,dist=1e9;
-  for(const t of pool){if(t.dead)continue;const d=Phaser.Math.Distance.Between(u.container.x,u.container.y,t.container.x,t.container.y);if(d<dist){dist=d;best=t}}
-  return {target:best,dist};
- }
- update(time){
-  if(this.phase!=='fight')return;
-  for(const u of [...this.units,...this.enemies]){
-   if(u.dead)continue;const {target,dist}=this.nearest(u);if(!target)continue;
-   if(dist>u.range){const a=Math.atan2(target.container.y-u.container.y,target.container.x-u.container.x);const speed=u.ally?(u.type==='tank'?34:43):29;u.container.x+=Math.cos(a)*speed/60;u.container.y+=Math.sin(a)*speed/60}
-   else if(time-u.last>u.rate){u.last=time;this.hit(u,target)}
-  }
-  if(this.enemies.every(e=>e.dead)){this.phase='reward';this.showReward(true)}
-  if(this.units.every(u=>u.dead)){this.phase='reward';this.showReward(false)}
- }
- hit(a,b){
-  b.hp-=a.damage;const col=a.ally?0xe8e8e8:0x888888;
-  const p=this.add.circle(a.container.x,a.container.y,3,col,1).setDepth(20);
-  this.tweens.add({targets:p,x:b.container.x,y:b.container.y,duration:130,onComplete:()=>p.destroy()});
-  this.tweens.add({targets:b.container,scaleX:1.18,scaleY:.86,duration:70,yoyo:true});
-  if(b.hp<=0&&!b.dead){b.dead=true;b.container.setAlpha(.25);this.tweens.add({targets:b.container,alpha:0,y:b.container.y+18,duration:300,onComplete:()=>b.container.destroy()});if(b.ally)this.kills++}
- }
- showReward(win){
-  this.overlay.removeAll(true);this.overlay.setVisible(true);
-  const shade=this.add.rectangle(W/2,H/2,W,H,0x000000,.82);
-  const title=this.add.text(W/2,250,win?'战斗胜利':'队伍覆灭',{fontSize:'26px',color:'#f2f2f2',fontStyle:'bold'}).setOrigin(.5);
-  const sub=this.add.text(W/2,292,win?'选择一项整备，然后继续推进':'本轮结束，重新整备再来',{fontSize:'12px',color:'#999'}).setOrigin(.5);
-  this.overlay.add([shade,title,sub]);
-  const choices=win?[['招募弓箭手','增加远程火力'],['强化全队','全员攻击提升'],['恢复队伍','全员恢复状态']]:[['重新开始','重置本轮阵容']];
-  choices.forEach((v,i)=>{const y=370+i*86;const r=this.add.rectangle(W/2,y,300,66,0x181818).setStrokeStyle(1,0x555555).setInteractive();const t=this.add.text(W/2,y-8,v[0],{fontSize:'15px',color:'#eee',fontStyle:'bold'}).setOrigin(.5);const d=this.add.text(W/2,y+15,v[1],{fontSize:'10px',color:'#888'}).setOrigin(.5);this.overlay.add([r,t,d]);r.on('pointerdown',()=>{if(!win){this.scene.restart();return}this.applyReward(i)})});
-  if(win){const next=this.add.text(W/2,690,'跳过整备，继续下一关',{fontSize:'12px',color:'#888'}).setOrigin(.5).setInteractive();this.overlay.add(next);next.on('pointerdown',()=>this.nextWave())}
- }
- applyReward(i){
-  if(i===0)this.createUnit('弓箭手','ranger',195,600,true);
-  if(i===1)this.units.forEach(u=>u.damage+=5);
-  if(i===2)this.units.forEach(u=>{u.hp=u.max});
-  this.nextWave();
- }
- nextWave(){this.overlay.setVisible(false);this.wave++;this.waveText.setText(String(this.wave).padStart(2,'0'));this.units=this.units.filter(u=>!u.dead);this.units.forEach(u=>{u.hp=u.max;u.container.setAlpha(1);u.container.setScale(1);u.container.x=90+this.units.indexOf(u)*100;u.container.y=570});this.enemies=[];this.phase='prep';this.phaseText.setText('拖动单位调整站位');this.hint.setText('准备阶段 · 拖动队员布阵');this.startBtn.setVisible(true);this.startLabel.setVisible(true)}
-}
-new Phaser.Game({type:Phaser.AUTO,parent:'game',width:W,height:H,backgroundColor:'#090909',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},physics:{default:'arcade',arcade:{debug:false}},scene:[Battle]});
-})();
+(()=>{const arena=document.querySelector('#arena'),feed=document.querySelector('#messages'),action=document.querySelector('#action'),hint=document.querySelector('#hint'),overlay=document.querySelector('#overlay'),roundEl=document.querySelector('#round'),live=document.querySelector('#live');let allies=[],foes=[],phase='prep',round=1,last=0,raf=0;
+const defs=[['张飞','前锋','矛',3,42,170],['关羽','斩击','刃',4,55,135],['弓手','远程','弓',2,27,95]];
+function log(text,important=false){const row=document.createElement('div');row.className='msg'+(important?' important':'');row.innerHTML='<span class="time">'+new Date().toLocaleTimeString('zh-CN',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'})+'</span><span>'+text+'</span>';feed.append(row);feed.scrollTop=feed.scrollHeight;while(feed.children.length>40)feed.firstChild.remove()}
+function card(data,enemy=false,x=.5,y=.5){const [name,role,art,atk,hp,max]=data;const el=document.createElement('div');el.className='card'+(enemy?' enemy':'');el.innerHTML='<div class="cost"><span>'+(enemy?'HOSTILE':'UNIT')+'</span><span>◆ '+atk+'</span></div><div class="art">'+art+'</div><div class="name">'+name+'</div><div class="stats"><span>'+role+'</span><span class="health">'+hp+'/'+max+'</span></div><div class="hp"><i></i></div>';arena.append(el);const obj={name,role,atk,hp,max,el,enemy,x,y,dead:false,cd:0};place(obj);if(!enemy){el.addEventListener('pointerdown',e=>{if(phase!=='prep')return;el.setPointerCapture(e.pointerId);obj.drag=true;obj.dx=e.clientX-el.getBoundingClientRect().left;obj.dy=e.clientY-el.getBoundingClientRect().top;el.classList.add('selected')});el.addEventListener('pointermove',e=>{if(!obj.drag)return;const r=arena.getBoundingClientRect();obj.x=Math.max(.08,Math.min(.92,(e.clientX-r.left-obj.dx+43)/r.width));obj.y=Math.max(.52,Math.min(.9,(e.clientY-r.top-obj.dy+58)/r.height));place(obj)});el.addEventListener('pointerup',()=>{obj.drag=false;el.classList.remove('selected')})}(enemy?foes:allies).push(obj);return obj}
+function place(o){o.el.style.left=(o.x*100)+'%';o.el.style.top=(o.y*100)+'%';o.el.style.transform='translate(-50%,-50%)'}
+function refresh(o){o.el.querySelector('.health').textContent=Math.max(0,o.hp)+'/'+o.max;o.el.querySelector('.hp i').style.width=Math.max(0,o.hp/o.max*100)+'%'}
+function setup(){allies=[];foes=[];arena.querySelectorAll('.card').forEach(e=>e.remove());defs.forEach((d,i)=>card(d,false,[.25,.5,.75][i],.76));feed.innerHTML='';log('三张战术卡已就位。等待交锋。')}
+function start(){if(phase!=='prep')return;phase='fight';live.textContent='● LIVE';hint.textContent='卡牌自动接敌 · 战报实时记录';action.disabled=true;log('战斗开始，双方卡牌进入交锋距离。',true);const n=3+Math.min(round,3);for(let i=0;i<n;i++){const hp=70+round*8;card(['盾卫','突击兵','猎手'][i%3]+' '+(i+1),['防御','近战','远程'][i%3],['盾','斧','弩'][i%3],22+round*2,hp,hp,true,[.2,.4,.6,.8][i%4],.2+Math.floor(i/4)*.2)}}
+function target(o){const pool=o.enemy?allies:foes;return pool.filter(t=>!t.dead).sort((a,b)=>Math.hypot(a.x-o.x,a.y-o.y)-Math.hypot(b.x-o.x,b.y-o.y))[0]}
+function tick(t){if(phase==='fight'&&t-last>360){last=t;[...allies,...foes].forEach(o=>{if(o.dead)return;const v=target(o);if(!v)return;const d=Math.hypot(v.x-o.x,v.y-o.y);if(d>.14){o.x+=(v.x-o.x)/d*.012;o.y+=(v.y-o.y)/d*.012;place(o)}else{o.cd++;if(o.cd%2===0){v.hp-=o.atk;refresh(v);log('<b>'+o.name+'</b> 与 <b>'+v.name+'</b> 卡牌碰撞，造成 '+o.atk+' 点伤害。');if(v.hp<=0){v.dead=true;v.el.classList.add('dead');log('<b>'+v.name+'</b> 卡牌被击破。',true)}}}});if(foes.every(o=>o.dead))finish(true);else if(allies.every(o=>o.dead))finish(false)}raf=requestAnimationFrame(tick)}
+function finish(win){phase='reward';live.textContent='● END';log(win?'敌方卡牌全部失去战斗力。交锋胜利。':'己方卡牌全部被击破。战斗结束。',true);overlay.classList.add('show');overlay.innerHTML='<h2>'+(win?'交锋胜利':'战斗失败')+'</h2><p style="color:#888;font-size:11px">'+(win?'选择一张战术强化卡':'重新组织卡组，再次挑战')+'</p>';if(win){[['增幅','己方所有卡牌攻击 +8'],['补员','加入一张支援卡'],['修整','己方卡牌恢复 40% 生命']].forEach((v,i)=>{const b=document.createElement('button');b.className='reward';b.innerHTML=v[0]+'<small>'+v[1]+'</small>';b.onclick=()=>{if(i===0)allies.forEach(o=>o.atk+=8);if(i===1)card(['支援兵','增援','✚',25,100,100],false,.5,.76);if(i===2)allies.forEach(o=>{o.hp=Math.min(o.max,o.hp+40);refresh(o)});next()};overlay.append(b)})}else{const b=document.createElement('button');b.className='reward';b.textContent='重新整备';b.onclick=()=>{round=1;roundEl.textContent='01';overlay.classList.remove('show');setup();phase='prep';action.disabled=false;live.textContent='● STANDBY'};overlay.append(b)}}
+function next(){round++;roundEl.textContent=String(round).padStart(2,'0');overlay.classList.remove('show');foes.forEach(o=>o.el.remove());foes=[];allies=allies.filter(o=>!o.dead);allies.forEach((o,i)=>{o.hp=o.max;o.dead=false;refresh(o);o.el.classList.remove('dead');o.x=(i+1)/(allies.length+1);o.y=.76;place(o)});phase='prep';action.disabled=false;live.textContent='● STANDBY';hint.textContent='整备完成 · 拖动卡牌调整站位';log('第 '+round+' 场交锋准备就绪。')}
+action.addEventListener('click',start);setup();raf=requestAnimationFrame(tick);window.addEventListener('pagehide',()=>cancelAnimationFrame(raf))})();
 </script></body></html>
